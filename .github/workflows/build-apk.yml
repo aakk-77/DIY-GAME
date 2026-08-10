@@ -54,8 +54,11 @@ jobs:
           ./configure --prefix=/usr/local/autoconf-2.69
           make -j$(nproc)
           sudo make install
-          sudo ln -sf /usr/local/autoconf-2.69/bin/autoconf /usr/local/bin/autoconf
-          autoconf --version
+          # Force replace system autoconf so autoreconf picks up 2.69
+          sudo cp /usr/bin/autoconf /usr/bin/autoconf.bak
+          sudo ln -sf /usr/local/autoconf-2.69/bin/autoconf /usr/bin/autoconf
+          sudo ln -sf /usr/local/autoconf-2.69/bin/autoconf /usr/bin/autoconf-2.69
+          /usr/bin/autoconf --version
           python3 -m pip install --upgrade pip
           python3 -m pip install --user buildozer cython
 
