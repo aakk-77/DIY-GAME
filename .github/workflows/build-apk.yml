@@ -1,0 +1,73 @@
+name: Build Android APK
+
+# 触发条件：推送到主分支、打 v* 标签、PR、或手动在 Actions 页面点 Run workflow
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+# 让 Actions 有权限发布 Release
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout 代码
+        uses: actions/checkout@v4
+
+      - name: 定位 buildozer.spec 所在目录
+        id: spec
+        run: |
+          # 默认假设 buildozer.spec 在仓库根目录；若实际在子目录(如 pvz_hybrid/)则自动适配
+          SPEC_DIR="."
+          if [ ! -f "buildozer.spec" ] && [ -d "pvz_hybrid" ] && [ -f "pvz_hybrid/buildozer.spec" ]; then
+            SPEC_DIR="pvz_hybrid"
+          fi
+          echo "spec_dir=$SPEC_DIR" >> "$GITHUB_OUTPUT"
+          echo "找到 buildozer.spec 于: $SPEC_DIR"
+
+      - name: 下载中文字体 (Noto Sans SC)
+        # Kivy 默认字体不含中文，APK 内中文会变方块；这里下载开源思源黑体子集
+        run: |
+          mkdir -p ${{ steps.spec.outputs.spec_dir }}/mobile
+          curl -L --fail -o ${{ steps.spec.outputs.spec_dir }}/mobile/font.otf \
+            "https://github.com/notofonts/noto-cjk/raw/main/Sans/SubsetOTF/SC/NotoSansSC-Regular.otf"
+          ls -lh ${{ steps.spec.outputs.spec_dir }}/mobile/font.otf
+
+      - name: 缓存 Buildozer 工具链（SDK/NDK，加速二次构建）
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.spec.outputs.spec_dir }}/.buildozer
+          key: buildozer-${{ runner.os }}-${{ hashFiles('**/buildozer.spec') }}
+          restore-keys: buildozer-${{ runner.os }}-
+
+      - name: 用 Buildozer 构建 APK
+        id: buildozer
+        uses: ArtemSBulgakov/buildozer-action@v1
+        with:
+          repository_root: ${{ steps.spec.outputs.spec_dir }}
+          workdir: ${{ steps.spec.outputs.spec_dir }}
+          buildozer_version: stable
+          command: buildozer android debug
+
+      - name: 上传 APK 为构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: pvzhybrid-apk
+          path: ${{ steps.buildozer.outputs.filename }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: 发布到 GitHub Release（仅打标签时）
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.buildozer.outputs.filename }}
+          generate_release_notes: true
