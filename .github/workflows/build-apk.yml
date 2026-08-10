@@ -62,7 +62,8 @@ jobs:
           export ANDROID_API=34
           export ANDROID_MINAPI=21
           export ARCHS=arm64-v8a
-          buildozer android debug
+          export ANDROID_ACCEPT_SDK_LICENSE=1
+          yes | buildozer android debug
 
       - name: 上传 APK 为构建产物
         uses: actions/upload-artifact@v4
