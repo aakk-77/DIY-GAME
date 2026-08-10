@@ -47,37 +47,10 @@ jobs:
               libffi-dev libssl-dev liblzma-dev \
               libsqlite3-dev libreadline-dev libbz2-dev \
               zip unzip git wget curl xz-utils
+          # Fix LT_SYS_SYMBOL_USCORE macro (removed in modern libtool)
+          echo 'AC_DEFUN([LT_SYS_SYMBOL_USCORE], [])' | sudo tee /usr/share/aclocal/ltsys.m4
           python3 -m pip install --upgrade pip
           python3 -m pip install --user buildozer cython
-          # Patch python-for-android libffi recipe
-          cat > /tmp/patch_libffi.py << 'ENDPY'
-import pythonforandroid, os
-p4a = pythonforandroid.__path__[0]
-rpath = os.path.join(p4a, 'recipes', 'libffi', '__init__.py')
-with open(rpath, 'r') as f:
-    c = f.read()
-old = "            shprint(sh.Command('./autogen.sh'), _env=env)"
-if old in c and 'Patched: {_cfg}' not in c:
-    p = """            # Patch configure.ac to define LT_SYS_SYMBOL_USCORE
-            # (removed from modern libtool, needed by libffi configure.ac)
-            _cfg = os.path.join(self.get_build_dir(arch.arch), 'configure.ac')
-            if os.path.exists(_cfg):
-                with open(_cfg, 'r') as _f:
-                    _c = _f.read()
-                if 'LT_SYS_SYMBOL_USCORE' in _c and 'AC_DEFUN([LT_SYS_SYMBOL_USCORE]' not in _c:
-                    _c = 'AC_DEFUN([LT_SYS_SYMBOL_USCORE], [])\\n' + _c
-                    with open(_cfg, 'w') as _f:
-                        _f.write(_c)
-                    print(f'Patched: {_cfg}')
-""" + old
-    c = c.replace(old, p)
-    with open(rpath, 'w') as f:
-        f.write(c)
-    print('Patched libffi recipe')
-else:
-    print('Recipe already patched or pattern not found')
-ENDPY
-          python3 /tmp/patch_libffi.py
 
       - name: 缓存 Buildozer 工具链（NDK 等）
         uses: actions/cache@v4
