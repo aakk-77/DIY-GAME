@@ -1,6 +1,5 @@
 name: Build Android APK
 
-# 触发条件：推送到主分支、打 v* 标签、PR、或手动在 Actions 页面点 Run workflow
 on:
   push:
     branches: [ main, master ]
@@ -9,7 +8,6 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
-# 让 Actions 有权限发布 Release
 permissions:
   contents: write
 
@@ -22,38 +20,26 @@ jobs:
       - name: Checkout 代码
         uses: actions/checkout@v4
 
-      - name: 定位 buildozer.spec 所在目录
-        id: spec
-        run: |
-          # 默认假设 buildozer.spec 在仓库根目录；若实际在子目录(如 pvz_hybrid/)则自动适配
-          SPEC_DIR="."
-          if [ ! -f "buildozer.spec" ] && [ -d "pvz_hybrid" ] && [ -f "pvz_hybrid/buildozer.spec" ]; then
-            SPEC_DIR="pvz_hybrid"
-          fi
-          echo "spec_dir=$SPEC_DIR" >> "$GITHUB_OUTPUT"
-          echo "找到 buildozer.spec 于: $SPEC_DIR"
-
       - name: 下载中文字体 (Noto Sans SC)
-        # Kivy 默认字体不含中文，APK 内中文会变方块；这里下载开源思源黑体子集
         run: |
-          mkdir -p ${{ steps.spec.outputs.spec_dir }}/mobile
-          curl -L --fail -o ${{ steps.spec.outputs.spec_dir }}/mobile/font.otf \
+          mkdir -p mobile
+          curl -L --fail -o mobile/font.otf \
             "https://github.com/notofonts/noto-cjk/raw/main/Sans/SubsetOTF/SC/NotoSansSC-Regular.otf"
-          ls -lh ${{ steps.spec.outputs.spec_dir }}/mobile/font.otf
+          ls -lh mobile/font.otf
 
-      - name: 缓存 Buildozer 工具链（SDK/NDK，加速二次构建）
+      - name: 缓存 Buildozer 工具链（SDK/NDK）
         uses: actions/cache@v4
         with:
-          path: ${{ steps.spec.outputs.spec_dir }}/.buildozer
+          path: ./.buildozer
           key: buildozer-${{ runner.os }}-${{ hashFiles('**/buildozer.spec') }}
           restore-keys: buildozer-${{ runner.os }}-
 
       - name: 用 Buildozer 构建 APK
         id: buildozer
-        uses: ArtemSBulgakov/buildozer-action@v1
+        uses: ArtemSBulgakov/buildozer-action@v1.2.0
         with:
-          repository_root: ${{ steps.spec.outputs.spec_dir }}
-          workdir: ${{ steps.spec.outputs.spec_dir }}
+          repository_root: .
+          workdir: .
           buildozer_version: stable
           command: buildozer android debug
 
