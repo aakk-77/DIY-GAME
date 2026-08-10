@@ -42,15 +42,59 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y \
-              automake autoconf libtool libltdl-dev \
+              automake autoconf libtool libtool-bin libltdl-dev m4 \
               pkg-config zlib1g-dev cmake \
               libffi-dev libssl-dev liblzma-dev \
               libsqlite3-dev libreadline-dev libbz2-dev \
-              zip unzip git wget curl xz-utils
-          # Fix LT_SYS_SYMBOL_USCORE macro (removed in modern libtool)
-          echo 'AC_DEFUN([LT_SYS_SYMBOL_USCORE], [])' | sudo tee /usr/share/aclocal/ltsys.m4
+              zip unzip git wget curl xz-utils openjdk-17-jdk
           python3 -m pip install --upgrade pip
           python3 -m pip install --user buildozer cython
+          echo "Buildozer version:"
+          python3 -m pip show buildozer | head -n 3
+          echo "python-for-android version:"
+          python3 -c "import pythonforandroid; print(pythonforandroid.__file__)"
+
+      - name: Patch libffi recipe (LT_SYS_SYMBOL_USCORE)
+        run: |
+          python3 << 'PYEOF'
+          import pythonforandroid, os, re
+          p4a = pythonforandroid.__path__[0]
+          rpath = os.path.join(p4a, 'recipes', 'libffi', '__init__.py')
+          with open(rpath) as f:
+              c = f.read()
+
+          # Insert stub-m4 creation right before the first `./autogen.sh` call
+          # This defines LT_SYS_SYMBOL_USCORE (removed from modern libtool 2.4.7)
+          old = "            shprint(sh.Command('./autogen.sh'), _env=env)"
+          if old in c:
+              injection = (
+                  "            # Patch: define LT_SYS_SYMBOL_USCORE (removed from libtool 2.4.7)\n"
+                  "            _m4_dir = os.path.join(self.get_build_dir(arch.arch), 'm4')\n"
+                  "            os.makedirs(_m4_dir, exist_ok=True)\n"
+                  "            with open(os.path.join(_m4_dir, 'lt_uscore_stub.m4'), 'w') as _mf:\n"
+                  "                _mf.write('AC_DEFUN([LT_SYS_SYMBOL_USCORE], [])\\n')\n"
+                  "            # Ensure aclocal picks it up\n"
+                  "            _ac = os.path.join(self.get_build_dir(arch.arch), 'aclocal.m4')\n"
+                  "            if os.path.exists(_ac):\n"
+                  "                with open(_ac) as _f:\n"
+                  "                    _ac_c = _f.read()\n"
+                  "                if 'lt_uscore_stub' not in _ac_c:\n"
+                  "                    with open(_ac, 'w') as _f:\n"
+                  "                        _f.write('m4_include([m4/lt_uscore_stub.m4])\\n' + _ac_c)\n"
+                  "            else:\n"
+                  "                with open(_ac, 'w') as _f:\n"
+                  "                    _f.write('m4_include([m4/lt_uscore_stub.m4])\\n')\n"
+                  "            print('[p4a patch] Inserted LT_SYS_SYMBOL_USCORE stub m4 for libffi')\n"
+                  + old
+              )
+              c = c.replace(old, injection, 1)
+              with open(rpath, 'w') as f:
+                  f.write(c)
+              print('[p4a patch] Patched libffi recipe successfully')
+          else:
+              print('[p4a patch] Target pattern not found in libffi recipe!')
+              print('[p4a patch] Content snippet:', repr(c[:500]))
+          PYEOF
 
       - name: 缓存 Buildozer 工具链（NDK 等）
         uses: actions/cache@v4
