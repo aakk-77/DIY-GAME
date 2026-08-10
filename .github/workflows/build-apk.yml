@@ -42,38 +42,15 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y \
-              autoconf libtool pkg-config zlib1g-dev \
-              cmake libffi-dev libssl-dev liblzma-dev \
+              automake autoconf libtool libltdl-dev \
+              pkg-config zlib1g-dev cmake \
+              libffi-dev libssl-dev liblzma-dev \
               libsqlite3-dev libreadline-dev libbz2-dev \
               zip unzip git wget curl xz-utils
-          # Build autoconf 2.69 + libtool 2.4.6 from source for libffi compatibility
-          cd /tmp
-          curl -LO https://ftp.gnu.org/gnu/autoconf/autoconf-2.69.tar.xz
-          tar xf autoconf-2.69.tar.xz
-          cd autoconf-2.69
-          ./configure --prefix=/usr/local/autoconf-2.69
-          make -j$(nproc)
-          sudo make install
-          # Build libtool 2.4.6 (last version with LT_SYS_SYMBOL_USCORE)
-          cd /tmp
-          curl -LO https://ftp.gnu.org/gnu/libtool/libtool-2.4.6.tar.xz
-          tar xf libtool-2.4.6.tar.xz
-          cd libtool-2.4.6
-          ./configure --prefix=/usr/local/libtool-2.4.6
-          make -j$(nproc)
-          sudo make install
-          # Force replace system autoconf and libtool
-          sudo cp /usr/bin/autoconf /usr/bin/autoconf.bak
-          sudo ln -sf /usr/local/autoconf-2.69/bin/autoconf /usr/bin/autoconf
-          sudo cp /usr/bin/libtool /usr/bin/libtool.bak 2>/dev/null || true
-          sudo ln -sf /usr/local/libtool-2.4.6/bin/libtool /usr/bin/libtool
-          sudo ln -sf /usr/local/libtool-2.4.6/bin/libtoolize /usr/bin/libtoolize
-          # Also copy libtool 2.4.6 m4 macros to system aclocal dir
-          sudo cp /usr/local/libtool-2.4.6/share/aclocal/libtool.m4 /usr/share/aclocal/libtool.m4
-          /usr/bin/autoconf --version
-          /usr/bin/libtool --version
           python3 -m pip install --upgrade pip
           python3 -m pip install --user buildozer cython
+          # Patch python-for-android libffi recipe to fix LT_SYS_SYMBOL_USCORE
+          python3 patch_libffi.py
 
       - name: 缓存 Buildozer 工具链（NDK 等）
         uses: actions/cache@v4
