@@ -28,6 +28,7 @@ android.permissions =
 # Android API 版本（自动下载对应 SDK/NDK）
 android.api = 34
 android.minapi = 21
+android.accept_sdk_license = True
 
 # 减少 ABI 以加快构建：只打 arm64（绝大多数现代手机）
 android.archs = arm64-v8a
