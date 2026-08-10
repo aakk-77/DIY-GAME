@@ -46,34 +46,36 @@ jobs:
               pkg-config zlib1g-dev cmake \
               libffi-dev libssl-dev liblzma-dev \
               libsqlite3-dev libreadline-dev libbz2-dev \
-              zip unzip git wget curl xz-utils openjdk-17-jdk
+              zip unzip git wget curl xz-utils openjdk-17-jdk patch \
+              build-essential ccache libncurses-dev
           python3 -m pip install --upgrade pip
           python3 -m pip install --user buildozer cython
           echo "Buildozer version:"
           python3 -m pip show buildozer | head -n 3
-          echo "python-for-android version:"
-          python3 -c "import pythonforandroid; print(pythonforandroid.__file__)"
 
-      - name: Patch libffi recipe (LT_SYS_SYMBOL_USCORE)
+      - name: 克隆并修补 python-for-android
         run: |
+          # 预先克隆 p4a，之后通过 p4a.source_dir 指向它
+          git clone --depth 1 --branch master \
+            https://github.com/kivy/python-for-android.git \
+            $HOME/p4a-patched
+          cd $HOME/p4a-patched
+          echo "Cloned p4a at $(pwd)"
           python3 << 'PYEOF'
-          import pythonforandroid, os, re
-          p4a = pythonforandroid.__path__[0]
-          rpath = os.path.join(p4a, 'recipes', 'libffi', '__init__.py')
+          import os
+          p4a_dir = os.path.expanduser('~/p4a-patched')
+          rpath = os.path.join(p4a_dir, 'pythonforandroid', 'recipes', 'libffi', '__init__.py')
           with open(rpath) as f:
               c = f.read()
 
-          # Insert stub-m4 creation right before the first `./autogen.sh` call
-          # This defines LT_SYS_SYMBOL_USCORE (removed from modern libtool 2.4.7)
           old = "            shprint(sh.Command('./autogen.sh'), _env=env)"
           if old in c:
               injection = (
-                  "            # Patch: define LT_SYS_SYMBOL_USCORE (removed from libtool 2.4.7)\n"
+                  "            # [PATCH] define LT_SYS_SYMBOL_USCORE (removed from libtool 2.4.7)\n"
                   "            _m4_dir = os.path.join(self.get_build_dir(arch.arch), 'm4')\n"
                   "            os.makedirs(_m4_dir, exist_ok=True)\n"
                   "            with open(os.path.join(_m4_dir, 'lt_uscore_stub.m4'), 'w') as _mf:\n"
                   "                _mf.write('AC_DEFUN([LT_SYS_SYMBOL_USCORE], [])\\n')\n"
-                  "            # Ensure aclocal picks it up\n"
                   "            _ac = os.path.join(self.get_build_dir(arch.arch), 'aclocal.m4')\n"
                   "            if os.path.exists(_ac):\n"
                   "                with open(_ac) as _f:\n"
@@ -95,6 +97,7 @@ jobs:
               print('[p4a patch] Target pattern not found in libffi recipe!')
               print('[p4a patch] Content snippet:', repr(c[:500]))
           PYEOF
+          echo "Patched p4a is ready at $HOME/p4a-patched"
 
       - name: 缓存 Buildozer 工具链（NDK 等）
         uses: actions/cache@v4
@@ -109,6 +112,19 @@ jobs:
           export ANDROID_API=34
           export ANDROID_MINAPI=21
           export ARCHS=arm64-v8a
+          cd $GITHUB_WORKSPACE
+          # 把 HOME 路径写入 buildozer.spec（buildozer 不会自动展开 $HOME）
+          python3 -c "
+          import os
+          p = 'buildozer.spec'
+          with open(p) as f:
+              c = f.read()
+          c = c.replace('\$HOME/p4a-patched', os.path.expanduser('~/p4a-patched'))
+          with open(p, 'w') as f:
+              f.write(c)
+          print('Updated buildozer.spec p4a.source_dir')
+          "
+          cat buildozer.spec | grep p4a.source_dir
           buildozer android debug
 
       - name: 上传 APK 为构建产物
