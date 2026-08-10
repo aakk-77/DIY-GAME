@@ -45,13 +45,16 @@ jobs:
               autoconf libtool pkg-config zlib1g-dev \
               cmake libffi-dev libssl-dev liblzma-dev \
               libsqlite3-dev libreadline-dev libbz2-dev \
-              zip unzip git wget
-          # Install autoconf 2.69 for libffi compatibility (autoconf 2.72+ breaks libffi build)
-          wget -q http://archive.ubuntu.com/ubuntu/pool/main/a/autoconf/autoconf_2.69-2_all.deb -O /tmp/autoconf269.deb
-          sudo dpkg -i /tmp/autoconf269.deb || true
-          # Make autoconf 2.69 the default
-          sudo update-alternatives --install /usr/bin/autoconf autoconf /usr/bin/autoconf-2.69 100 2>/dev/null || true
-          sudo update-alternatives --set autoconf /usr/bin/autoconf-2.69 2>/dev/null || true
+              zip unzip git wget curl xz-utils
+          # Build autoconf 2.69 from source for libffi compatibility
+          cd /tmp
+          curl -LO https://ftp.gnu.org/gnu/autoconf/autoconf-2.69.tar.xz
+          tar xf autoconf-2.69.tar.xz
+          cd autoconf-2.69
+          ./configure --prefix=/usr/local/autoconf-2.69
+          make -j$(nproc)
+          sudo make install
+          sudo ln -sf /usr/local/autoconf-2.69/bin/autoconf /usr/local/bin/autoconf
           autoconf --version
           python3 -m pip install --upgrade pip
           python3 -m pip install --user buildozer cython
@@ -65,7 +68,7 @@ jobs:
 
       - name: 用 Buildozer 构建 APK
         run: |
-          export PATH="/usr/bin:$HOME/.local/bin:$PATH"
+          export PATH="/usr/local/bin:$HOME/.local/bin:$PATH"
           export ANDROID_API=34
           export ANDROID_MINAPI=21
           export ARCHS=arm64-v8a
