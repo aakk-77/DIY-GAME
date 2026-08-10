@@ -30,6 +30,9 @@ android.api = 34
 android.minapi = 21
 android.accept_sdk_license = True
 
+# 使用预先克隆并打补丁的 python-for-android（解决 libffi + libtool 2.4.7 不兼容问题）
+p4a.source_dir = $HOME/p4a-patched
+
 # 减少 ABI 以加快构建：只打 arm64（绝大多数现代手机）
 android.archs = arm64-v8a
 
