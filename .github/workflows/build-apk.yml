@@ -14,7 +14,7 @@ permissions:
 jobs:
   build:
     name: Build APK
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout 代码
@@ -53,52 +53,6 @@ jobs:
           echo "Buildozer version:"
           python3 -m pip show buildozer | head -n 3
 
-      - name: 克隆并修补 python-for-android
-        run: |
-          # 预先克隆 p4a，之后通过 p4a.source_dir 指向它
-          git clone --depth 1 --branch master \
-            https://github.com/kivy/python-for-android.git \
-            $HOME/p4a-patched
-          cd $HOME/p4a-patched
-          echo "Cloned p4a at $(pwd)"
-          python3 << 'PYEOF'
-          import os
-          p4a_dir = os.path.expanduser('~/p4a-patched')
-          rpath = os.path.join(p4a_dir, 'pythonforandroid', 'recipes', 'libffi', '__init__.py')
-          with open(rpath) as f:
-              c = f.read()
-
-          old = "            shprint(sh.Command('./autogen.sh'), _env=env)"
-          if old in c:
-              injection = (
-                  "            # [PATCH] define LT_SYS_SYMBOL_USCORE (removed from libtool 2.4.7)\n"
-                  "            _m4_dir = os.path.join(self.get_build_dir(arch.arch), 'm4')\n"
-                  "            os.makedirs(_m4_dir, exist_ok=True)\n"
-                  "            with open(os.path.join(_m4_dir, 'lt_uscore_stub.m4'), 'w') as _mf:\n"
-                  "                _mf.write('AC_DEFUN([LT_SYS_SYMBOL_USCORE], [])\\n')\n"
-                  "            _ac = os.path.join(self.get_build_dir(arch.arch), 'aclocal.m4')\n"
-                  "            if os.path.exists(_ac):\n"
-                  "                with open(_ac) as _f:\n"
-                  "                    _ac_c = _f.read()\n"
-                  "                if 'lt_uscore_stub' not in _ac_c:\n"
-                  "                    with open(_ac, 'w') as _f:\n"
-                  "                        _f.write('m4_include([m4/lt_uscore_stub.m4])\\n' + _ac_c)\n"
-                  "            else:\n"
-                  "                with open(_ac, 'w') as _f:\n"
-                  "                    _f.write('m4_include([m4/lt_uscore_stub.m4])\\n')\n"
-                  "            print('[p4a patch] Inserted LT_SYS_SYMBOL_USCORE stub m4 for libffi')\n"
-                  + old
-              )
-              c = c.replace(old, injection, 1)
-              with open(rpath, 'w') as f:
-                  f.write(c)
-              print('[p4a patch] Patched libffi recipe successfully')
-          else:
-              print('[p4a patch] Target pattern not found in libffi recipe!')
-              print('[p4a patch] Content snippet:', repr(c[:500]))
-          PYEOF
-          echo "Patched p4a is ready at $HOME/p4a-patched"
-
       - name: 缓存 Buildozer 工具链（NDK 等）
         uses: actions/cache@v4
         with:
@@ -113,18 +67,6 @@ jobs:
           export ANDROID_MINAPI=21
           export ARCHS=arm64-v8a
           cd $GITHUB_WORKSPACE
-          # 把 HOME 路径写入 buildozer.spec（buildozer 不会自动展开 $HOME）
-          python3 -c "
-          import os
-          p = 'buildozer.spec'
-          with open(p) as f:
-              c = f.read()
-          c = c.replace('\$HOME/p4a-patched', os.path.expanduser('~/p4a-patched'))
-          with open(p, 'w') as f:
-              f.write(c)
-          print('Updated buildozer.spec p4a.source_dir')
-          "
-          cat buildozer.spec | grep p4a.source_dir
           buildozer android debug
 
       - name: 上传 APK 为构建产物
@@ -133,6 +75,18 @@ jobs:
           name: pvzhybrid-apk
           path: bin/*.apk
           if-no-files-found: error
+          retention-days: 30
+
+      # 失败时保留日志以便诊断
+      - name: 上传构建日志（仅在失败时）
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: buildozer-logs
+          path: |
+            ~/.buildozer/android/platform/build-*/dist_output/
+            ~/.buildozer/android/platform/build-*/bin/
+          if-no-files-found: ignore
           retention-days: 30
 
       - name: 发布到 GitHub Release（仅打标签时）
